@@ -207,6 +207,13 @@ class Theme:
     TERTIARY: str = "#A6BD63"   # vert (froid)
     BACKGROUND: str = "#FFFCF2"
 
+    PALETTE: List[str] = ["#7451EB", "#EE8273", "#A6BD63"]
+
+    @classmethod
+    def base_palette(cls) -> List[str]:
+        """Retourne la palette fondamentale (PRIMARY, SECONDARY, TERTIARY)."""
+        return [cls.PRIMARY, cls.SECONDARY, cls.TERTIARY]
+
     # Variantes (palette qualitative) – configurables
     _PRIMARY_VARIANTS: List[str] = ["#9D7EF0", "#4B25D6"]
     _SECONDARY_VARIANTS: List[str] = ["#F3A093", "#D95848"]
@@ -235,7 +242,7 @@ class Theme:
         c = cls._to_rgb(color)
         white = np.array([1.0, 1.0, 1.0])
         mixed = (1 - amount) * c + amount * white
-        return mcolors.to_hex(mixed)
+        return mcolors.to_hex(mixed) # type: ignore
 
     @classmethod
     def _shade(cls, color: str, amount: float = 0.65) -> str:
@@ -246,7 +253,7 @@ class Theme:
         c = cls._to_rgb(color)
         black = np.array([0.0, 0.0, 0.0])
         mixed = (1 - amount) * c + amount * black
-        return mcolors.to_hex(mixed)
+        return mcolors.to_hex(mixed) # type: ignore
 
     @classmethod
     def _compute_sequentials(
@@ -350,6 +357,7 @@ class Theme:
             light_amount=light_amount,
             dark_amount=dark_amount,
         )
+        cls.PALETTE = cls.base_palette()
 
     # --------- helpers internes ---------
     @classmethod
@@ -375,8 +383,10 @@ class Theme:
         start_key: str,
         end_key: str,
         *,
-        center: str = "#f7f7f7",
+        center: Optional[str] = None,
         strong_ends: bool = True,
+        blend_center: bool = False,
+        blend_ratio: float = 0.5,
     ) -> Tuple[str, List[str]]:
         """Construit un colormap divergent à partir de deux rampes.
 
@@ -386,11 +396,16 @@ class Theme:
         s_seq = cls._get_seq(start_key)  # [light, mid, dark]
         e_seq = cls._get_seq(end_key)    # [light, mid, dark]
 
-        colors = []
+        if blend_center:
+            center_color = mix_colors(s_seq[1], e_seq[1], ratio=blend_ratio)
+        else:
+            center_color = center or "#f7f7f7"
+
+        colors: List[str] = []
         if strong_ends:
             colors.append(s_seq[2])      # dark start
         colors.append(s_seq[1])          # start mid
-        colors.append(center)            # clair au centre (quasi neutre)
+        colors.append(center_color)      # centre neutre ou mélange
         colors.append(e_seq[1])          # end mid
         if strong_ends:
             colors.append(e_seq[2])      # dark end
@@ -408,6 +423,10 @@ class Theme:
         end: Optional[Literal["primary", "secondary", "tertiary"]] = None,
         reverse: bool = False,
         as_cmap: bool = True,
+        center: Optional[str] = None,
+        blend_center: bool = False,
+        blend_ratio: float = 0.5,
+        strong_ends: bool = True,
     ):
         """Retourne un colormap Matplotlib ou la liste des stops.
 
@@ -430,6 +449,14 @@ class Theme:
         as_cmap : bool
             Si ``True``, retourne un objet ``Colormap`` ; sinon la liste
             des valeurs hexadécimales.
+        center : str | None
+            Couleur centrale explicite (hexadécimal). Ignorée si ``blend_center`` vaut ``True``.
+        blend_center : bool
+            Mélange automatiquement les teintes ``start`` et ``end`` pour générer la couleur centrale.
+        blend_ratio : float
+            Ratio de mélange (0..1) appliqué quand ``blend_center`` est activé.
+        strong_ends : bool
+            Ajoute les teintes foncées des rampes aux extrémités du colormap divergent.
         """
         # Alias pour compat : "primary"/"secondary"/"tertiary" => séquentiel
         if mode in {"primary", "secondary", "tertiary"}:
@@ -437,7 +464,7 @@ class Theme:
             colors = list(reversed(seq)) if reverse else seq
             return cls._from_list(f"ocr_{mode}", colors) if as_cmap else colors
 
-        mode = mode.lower()
+        #mode = mode.lower()
         if mode == "sequential":
             key = (start or "primary").lower()
             seq = cls._get_seq(key)
@@ -447,11 +474,18 @@ class Theme:
         if mode == "diverging":
             if not start or not end:
                 raise ValueError("Pour un colormap diverging, fournir start=... et end=...")
-            start = start.lower()
-            end = end.lower()
+            #start = start.lower()
+            #end = end.lower()
             if start not in cls._NAMES or end not in cls._NAMES:
                 raise ValueError(f"start/end doivent être dans {sorted(cls._NAMES)}.")
-            name, colors = cls._make_diverging(start, end)
+            name, colors = cls._make_diverging(
+                start,
+                end,
+                center=center,
+                strong_ends=strong_ends,
+                blend_center=blend_center,
+                blend_ratio=blend_ratio,
+            )
             if reverse:
                 colors = list(reversed(colors))
             return cls._from_list(name, colors) if as_cmap else colors
@@ -465,7 +499,7 @@ class Theme:
         Retourne la palette qualitative étendue utilisée par Seaborn.
         """
         pal = cls.extended_palette()
-        sns.set_theme(context=context, style=style, palette=pal)
+        sns.set_theme(context=context, style=style, palette=pal) # type: ignore
         plt.rcParams.update(THEME_RC_OVERRIDES)
         return pal
 
@@ -517,7 +551,7 @@ class Theme:
             cls.apply()
         _, _, Z = cls._demo_field()
         cmap = cls.colormap("sequential", start=start, reverse=reverse)
-        plt.imshow(Z, cmap=cmap, origin="lower")
+        plt.imshow(Z, cmap=cmap, origin="lower") # type: ignore
         direction = "foncé → clair" if reverse else "clair → foncé"
         plt.title(title or f"Séquentiel {start.upper()} ({direction})")
         if with_colorbar:
@@ -534,6 +568,10 @@ class Theme:
         with_colorbar: bool = True,
         title: Optional[str] = None,
         apply_theme: bool = False,
+        center: Optional[str] = None,
+        blend_center: bool = False,
+        blend_ratio: float = 0.5,
+        strong_ends: bool = True,
     ) -> None:
         """Affiche une démo ``imshow`` avec un colormap divergent.
 
@@ -544,8 +582,17 @@ class Theme:
         if apply_theme:
             cls.apply()
         _, _, Z = cls._demo_field()
-        cmap = cls.colormap("diverging", start=start, end=end, reverse=reverse)
-        plt.imshow(Z, cmap=cmap, origin="lower")
+        cmap = cls.colormap(
+            "diverging",
+            start=start,
+            end=end,
+            reverse=reverse,
+            center=center,
+            blend_center=blend_center,
+            blend_ratio=blend_ratio,
+            strong_ends=strong_ends,
+        )
+        plt.imshow(Z, cmap=cmap, origin="lower") # type: ignore
         plt.title(title or f"Diverging {start.upper()} ↔ {end.upper()}")
         if with_colorbar:
             plt.colorbar()
@@ -570,7 +617,7 @@ class Theme:
             cls.apply()
         data = cls._demo_matrix()
         plt.figure(figsize=(6, 4))
-        sns.heatmap(data, cmap=cls.colormap("sequential", start=start, reverse=reverse))
+        sns.heatmap(data, cmap=cls.colormap("sequential", start=start, reverse=reverse)) # type: ignore
         direction = "foncé → clair" if reverse else "clair → foncé"
         plt.title(title or f"Heatmap séquentielle - {start.upper()} ({direction})")
         plt.show()
@@ -595,7 +642,7 @@ class Theme:
             cls.apply()
         data = cls._demo_matrix()
         plt.figure(figsize=(6, 4))
-        sns.heatmap(data, cmap=cls.colormap("diverging", start=start, end=end, reverse=reverse))
+        sns.heatmap(data, cmap=cls.colormap("diverging", start=start, end=end, reverse=reverse)) # type: ignore
         plt.title(title or f"Heatmap diverging - {start.upper()} ↔ {end.upper()}")
         plt.show()
 
@@ -647,3 +694,20 @@ _default_cfg = ThemeConfig(
     text_color="black",
 )
 configure_theme(_default_cfg)
+def mix_colors(color1: str, color2: str, ratio: float = 0.5) -> str:
+    """Mélange deux couleurs hexadécimales selon ``ratio`` (0-1)."""
+    rgb1 = np.array(mcolors.to_rgb(color1))
+    rgb2 = np.array(mcolors.to_rgb(color2))
+    mixed = (1 - ratio) * rgb1 + ratio * rgb2
+    return mcolors.to_hex(mixed) # type: ignore
+
+
+def make_diverging_cmap(
+    primary: str,
+    secondary: str,
+    name: str = "custom_diverging",
+    ratio: float = 0.5,
+):
+    """Crée un colormap divergent simple (primary → mix → secondary)."""
+    mid = mix_colors(primary, secondary, ratio=ratio)
+    return mcolors.LinearSegmentedColormap.from_list(name, [primary, mid, secondary])

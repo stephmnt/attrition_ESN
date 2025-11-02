@@ -1,6 +1,6 @@
 # Ré-export pratique
 from .var import load_settings
-
+from .shap_generator import shap_local, shap_global
 # (Optionnel) exposer directement les constantes si tu veux importer "prêt à l'emploi"
 try:
     _CFG = load_settings()  # lit manet_projet04/settings.yml

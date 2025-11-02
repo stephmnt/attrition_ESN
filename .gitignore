@@ -1,3 +1,12 @@
+# Projet_04
+*sql
+*db
+HR_Attrition_Analysis_Template
+output/*
+
+# VS_Code
+projet_04.code-workspace
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

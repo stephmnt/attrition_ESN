@@ -4,11 +4,59 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.text import Text
-from brand.brand import Theme
+try:
+    from shap.plots import style_context  # type: ignore # SHAP >= 0.45
+except ImportError:  # pragma: no cover - rétrocompat
+    from shap.plots._style import style_context
+from matplotlib.colors import Colormap, LinearSegmentedColormap
+from brand.brand import Theme, load_brand
+
+cfg = load_brand("brand/brand.yml")
+Theme.apply()
+DEFAULT_CMAP = Theme.colormap(
+    "diverging",
+    start="primary",
+    end="secondary",
+    blend_center=True,
+    strong_ends=True,
+)
+
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
-def shap_global(final_pipe, X_full, y_full, RANDOM_STATE=42, sample_size=400, plot_type="dot", max_display=15):
+def _resolve_cmap(user_cmap):
+    """Retourne un objet Colormap utilisable par Matplotlib/SHAP."""
+    if user_cmap is None:
+        return DEFAULT_CMAP
+    if isinstance(user_cmap, Colormap):
+        return user_cmap
+    if isinstance(user_cmap, str):
+        try:
+            return plt.get_cmap(user_cmap)
+        except ValueError:
+            print(f"[AVERTISSEMENT] Colormap '{user_cmap}' inconnue → utilisation du thème par défaut.")
+            return DEFAULT_CMAP
+    # Essaye de convertir une liste de couleurs
+    if isinstance(user_cmap, (list, tuple)):
+        try:
+            return LinearSegmentedColormap.from_list("user_cmap", user_cmap)
+        except Exception:
+            print("[AVERTISSEMENT] Impossible de convertir la liste de couleurs fournie → colormap par défaut.")
+            return DEFAULT_CMAP
+    print("[AVERTISSEMENT] Objet colormap non reconnu → utilisation du thème par défaut.")
+    return DEFAULT_CMAP
+
+
+def shap_global(
+    final_pipe,
+    X_full,
+    y_full,
+    RANDOM_STATE=42,
+    sample_size=400,
+    plot_type="dot",
+    max_display=15,
+    cmap=None,
+):
     """
     Affiche un diagramme SHAP global avec fallback automatique si le graphique principal échoue.
     """
@@ -85,7 +133,7 @@ def shap_global(final_pipe, X_full, y_full, RANDOM_STATE=42, sample_size=400, pl
     print(f"[INFO] SHAP array shape: {shap_array.shape}")
 
     # --- Étape 7 : Diagramme ---
-    cmap = Theme.colormap("diverging", start="primary", end="secondary")
+    summary_cmap = _resolve_cmap(cmap)
     try:
         shap.summary_plot(
             shap_values,
@@ -94,7 +142,7 @@ def shap_global(final_pipe, X_full, y_full, RANDOM_STATE=42, sample_size=400, pl
             plot_type=plot_type,
             max_display=max_display,
             show=False,
-            cmap=cmap,
+            cmap=summary_cmap,
             color=Theme.PRIMARY if plot_type == "bar" else None
         )
         fig = plt.gcf()
@@ -103,6 +151,7 @@ def shap_global(final_pipe, X_full, y_full, RANDOM_STATE=42, sample_size=400, pl
         ax.set_facecolor(Theme.BACKGROUND)
         plt.title(f"SHAP Summary Plot ({plot_type}) – Importance globale", fontsize=11)
         plt.tight_layout()
+        plt.savefig(f"output/shap_summary_{plot_type}.png", dpi=300)
         plt.show()
         plt.close()
     except Exception as e:
@@ -123,6 +172,7 @@ def shap_global(final_pipe, X_full, y_full, RANDOM_STATE=42, sample_size=400, pl
             ax.set_facecolor(Theme.BACKGROUND)
             plt.title("SHAP Summary Plot – (fallback barplot)", fontsize=11)
             plt.tight_layout()
+            plt.savefig(f"output/shap_summary_fallback_barplot.png", dpi=300)
             plt.show()
             plt.close()
         except Exception as e2:
@@ -132,7 +182,7 @@ def shap_global(final_pipe, X_full, y_full, RANDOM_STATE=42, sample_size=400, pl
 
 
 # === Fonction 2 : SHAP LOCAL ===
-def shap_local(idx, shap_values, max_display=10, text_scale=0.6):
+def shap_local(idx, shap_values, max_display=10, text_scale=0.6, cmap=DEFAULT_CMAP):
     """
     Affiche un diagramme SHAP local plus lisible (textes réduits).
     
@@ -158,9 +208,24 @@ def shap_local(idx, shap_values, max_display=10, text_scale=0.6):
 
     # --- Crée la figure ---
     plt.figure(figsize=(7, 5))
+    style_kwargs = dict(
+        primary_color_positive=Theme.SECONDARY,
+        primary_color_negative=Theme.PRIMARY,
+        secondary_color_positive=Theme.SECONDARY,
+        secondary_color_negative=Theme.PRIMARY,
+        hlines_color=Theme.SECONDARY,
+        vlines_color=Theme.SECONDARY,
+        text_color="white",
+        tick_labels_color="black",
+    )
 
     # --- Génère le graphique SHAP ---
-    shap.plots.waterfall(shap_values[idx], max_display=max_display, show=False)
+    with style_context(**style_kwargs):
+        shap.plots.waterfall(shap_values[idx], max_display=max_display, show=False)
+    fig = plt.gcf()
+    ax = plt.gca()
+    fig.patch.set_facecolor(Theme.BACKGROUND)
+    ax.set_facecolor(Theme.BACKGROUND)
 
     # --- Ajuste la taille du texte ---
     for txt in plt.gcf().findobj(Text):
@@ -174,5 +239,6 @@ def shap_local(idx, shap_values, max_display=10, text_scale=0.6):
         
     plt.title(f"Explication locale SHAP – individu {idx}", fontsize=9, pad=10)
     plt.tight_layout()
+    plt.savefig(f"output/shap_local_individu_{idx}.png", dpi=300)
     plt.show()
     plt.close()

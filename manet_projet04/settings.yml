@@ -16,7 +16,6 @@ NUM_COLS:
   - note_evaluation_actuelle
   - note_evaluation_precedente
   - nombre_heures_travailles
-  - heure_supplementaires
   - augementation_salaire_precedente
   - nombre_experiences_precedentes
   - nb_formations_suivies
@@ -41,6 +40,7 @@ CAT_COLS:
   - domaine_etude
   - frequence_deplacement
   - ayant_enfants
+  - heure_supplementaires  
 
 SAT_COLS:
   - satisfaction_employee_environnement
